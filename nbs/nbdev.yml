@@ -1,0 +1,9 @@
+project:
+  output-dir: _docs
+
+website:
+  title: "pfc-semantic-segmentation"
+  site-url: "https://Matheus-lla.github.io/pfc-semantic-segmentation"
+  description: "Semantic Segmentation of Point Clouds Using Clustering-Based Preprocessing and Deep Learning"
+  repo-branch: main
+  repo-url: "https://github.com/Matheus-lla/pfc-semantic-segmentation"

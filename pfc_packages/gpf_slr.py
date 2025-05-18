@@ -278,9 +278,10 @@ def scan_line_run_clustering(
 
     # Filter non-ground points (predicted_label == 0)
     non_ground_mask = point_cloud[:, 4] == 0
+    if non_ground_mask.sum() == 0:
+        raise ValueError("point cloud já clusterizada")
     non_ground_indices = np.nonzero(non_ground_mask)[0]  # ← Adicionada
     non_ground_points = point_cloud[non_ground_mask].copy()
-    ground_points = point_cloud[~non_ground_mask]
 
     if non_ground_points.size == 0:
         raise ValueError("Point cloud already clustered or no non-ground points found.")

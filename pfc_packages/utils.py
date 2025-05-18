@@ -470,14 +470,6 @@ class PointCloudVisualizer:
         vis.add_geometry(arrow_y)
         vis.add_geometry(arrow_z)
 
-        # Centroide (vermelho)
-        if centroids.size > 0:
-            pcd_centroids = o3d.geometry.PointCloud()
-            pcd_centroids.points = o3d.utility.Vector3dVector(centroids)
-            pcd_centroids.colors = o3d.utility.Vector3dVector(colors)  # <-- aqui
-            vis.add_geometry(pcd_centroids)
-
-        # Min/Max
         if show_min_max:
             if min_points.size > 0:
                 pcd_min = o3d.geometry.PointCloud()
@@ -490,6 +482,12 @@ class PointCloudVisualizer:
                 pcd_max.points = o3d.utility.Vector3dVector(max_points)
                 pcd_max.colors = o3d.utility.Vector3dVector(colors_max)  # <-- aqui
                 vis.add_geometry(pcd_max)
+
+        if centroids.size > 0:
+            pcd_centroids = o3d.geometry.PointCloud()
+            pcd_centroids.points = o3d.utility.Vector3dVector(centroids)
+            pcd_centroids.colors = o3d.utility.Vector3dVector(colors)  # <-- aqui
+            vis.add_geometry(pcd_centroids)
 
         if show_grid:
             vis.add_geometry(self._create_grid(self.grid_size, self.grid_spacing))

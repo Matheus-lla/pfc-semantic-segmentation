@@ -152,4 +152,7 @@ checklink/cookies.txt
 .quarto
 
 # unecessary files
-tests/plots
+experiments/plots
+experiments/temp_vis*
+experiments/checkpoints_to_ignore
+pointnet*

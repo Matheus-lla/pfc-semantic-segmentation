@@ -20,9 +20,12 @@ class TNet(nn.Module):
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, k * k)
 
-        self.bn1 = nn.BatchNorm1d(64)
-        self.bn2 = nn.BatchNorm1d(128)
-        self.bn3 = nn.BatchNorm1d(1024)
+        # self.bn1 = nn.BatchNorm1d(64)
+        # self.bn2 = nn.BatchNorm1d(128)
+        # self.bn3 = nn.BatchNorm1d(1024)
+        self.bn1 = nn.InstanceNorm1d(64)
+        self.bn2 = nn.InstanceNorm1d(128)
+        self.bn3 = nn.InstanceNorm1d(1024)
         # self.bn4 = nn.BatchNorm1d(512)
         # self.bn5 = nn.BatchNorm1d(256)
         self.bn4 = nn.LayerNorm(512)
@@ -51,9 +54,9 @@ class PointNetEncoder(nn.Module):
         self.conv1 = nn.Conv1d(channel, 64, 1)
         self.conv2 = nn.Conv1d(64, 128, 1)
         self.conv3 = nn.Conv1d(128, 1024, 1)
-        self.bn1 = nn.BatchNorm1d(64)
-        self.bn2 = nn.BatchNorm1d(128)
-        self.bn3 = nn.BatchNorm1d(1024)
+        self.bn1 = nn.InstanceNorm1d(64)
+        self.bn2 = nn.InstanceNorm1d(128)
+        self.bn3 = nn.InstanceNorm1d(1024)
         self.global_feat = global_feat
         self.feature_transform = feature_transform
         if self.feature_transform:
@@ -103,9 +106,9 @@ class PointNetSeg(nn.Module):
         self.conv2 = nn.Conv1d(512, 256, 1)
         self.conv3 = nn.Conv1d(256, 128, 1)
         self.conv4 = nn.Conv1d(128, self.num_classes, 1)
-        self.bn1 = nn.BatchNorm1d(512)
-        self.bn2 = nn.BatchNorm1d(256)
-        self.bn3 = nn.BatchNorm1d(128)
+        self.bn1 = nn.InstanceNorm1d(512)
+        self.bn2 = nn.InstanceNorm1d(256)
+        self.bn3 = nn.InstanceNorm1d(128)
 
     def forward(self, x):
         # Espera entrada: (B, N, C) -> (B, C, N)

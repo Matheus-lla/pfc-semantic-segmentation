@@ -8,59 +8,106 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# %% ../nbs/02_pointNet.ipynb 6
+# %% ../nbs/02_pointNet.ipynb 4
 class TNet(nn.Module):
     def __init__(self, k=3):
         super(TNet, self).__init__()
         self.k = k
+        # self.conv1 = nn.Conv1d(k, 64, 1)
+        # self.conv2 = nn.Conv1d(64, 128, 1)
+        # self.conv3 = nn.Conv1d(128, 1024, 1)
         self.conv1 = nn.Conv1d(k, 64, 1)
-        self.conv2 = nn.Conv1d(64, 128, 1)
-        self.conv3 = nn.Conv1d(128, 1024, 1)
-        self.fc1 = nn.Linear(1024, 512)
-        self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, k * k)
+        self.conv1b = nn.Conv1d(64, 128, 1)
+        self.conv2 = nn.Conv1d(128, 256, 1)
+        self.conv2b = nn.Conv1d(256, 512, 1)
+        self.conv3 = nn.Conv1d(512, 1024, 1)
+        self.conv3b = nn.Conv1d(1024, 2048, 1)
+
+        # self.fc1 = nn.Linear(1024, 512)
+        # self.fc2 = nn.Linear(512, 256)
+        # self.fc3 = nn.Linear(256, k * k)
+        self.fc1 = nn.Linear(2048, 1024)
+        self.fc2 = nn.Linear(1024, 512)
+        self.fc3 = nn.Linear(512, 256)
+        self.fc4 = nn.Linear(256, k * k)
 
         # self.bn1 = nn.BatchNorm1d(64)
         # self.bn2 = nn.BatchNorm1d(128)
         # self.bn3 = nn.BatchNorm1d(1024)
+        # self.bn1 = nn.InstanceNorm1d(64)
+        # self.bn2 = nn.InstanceNorm1d(128)
+        # self.bn3 = nn.InstanceNorm1d(1024)
         self.bn1 = nn.InstanceNorm1d(64)
-        self.bn2 = nn.InstanceNorm1d(128)
+        self.bn1b = nn.InstanceNorm1d(128)  
+        self.bn2 = nn.InstanceNorm1d(256)
+        self.bn2b = nn.InstanceNorm1d(512)
         self.bn3 = nn.InstanceNorm1d(1024)
+        self.bn3b = nn.InstanceNorm1d(2048)
+
         # self.bn4 = nn.BatchNorm1d(512)
         # self.bn5 = nn.BatchNorm1d(256)
-        self.bn4 = nn.LayerNorm(512)
-        self.bn5 = nn.LayerNorm(256)
+        # self.bn4 = nn.LayerNorm(512)
+        # self.bn5 = nn.LayerNorm(256)
+        self.bn4 = nn.LayerNorm(1024)
+        self.bn5 = nn.LayerNorm(512)
+        self.bn6 = nn.LayerNorm(256)
 
     def forward(self, x):
         B, K, N = x.size()
+        # x = F.relu(self.bn1(self.conv1(x)))
+        # x = F.relu(self.bn2(self.conv2(x)))
+        # x = F.relu(self.bn3(self.conv3(x)))
         x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn1b(self.conv1b(x))) 
         x = F.relu(self.bn2(self.conv2(x)))
+        x = F.relu(self.bn2b(self.conv2b(x)))
         x = F.relu(self.bn3(self.conv3(x)))
+        x = F.relu(self.bn3b(self.conv3b(x))) 
         x = torch.max(x, 2)[0]
+        # x = F.relu(self.bn4(self.fc1(x)))
+        # x = F.relu(self.bn5(self.fc2(x)))
+
         x = F.relu(self.bn4(self.fc1(x)))
         x = F.relu(self.bn5(self.fc2(x)))
-        x = self.fc3(x)
+        x = F.relu(self.bn6(self.fc3(x)))
+        # x = self.fc3(x)
+        x = self.fc4(x)
 
         iden = torch.eye(self.k, device=x.device).flatten().unsqueeze(0).repeat(B, 1)
         x = x + iden
         x = x.view(-1, self.k, self.k)
         return x
 
-# %% ../nbs/02_pointNet.ipynb 7
+# %% ../nbs/02_pointNet.ipynb 5
 class PointNetEncoder(nn.Module):
     def __init__(self, global_feat=True, feature_transform=False, channel=9):
         super(PointNetEncoder, self).__init__()
         self.stn = TNet(k=3)
+        # self.conv1 = nn.Conv1d(channel, 64, 1)
+        # self.conv2 = nn.Conv1d(64, 128, 1)
+        # self.conv3 = nn.Conv1d(128, 1024, 1)
+        # self.bn1 = nn.InstanceNorm1d(64)
+        # self.bn2 = nn.InstanceNorm1d(128)
+        # self.bn3 = nn.InstanceNorm1d(1024)
         self.conv1 = nn.Conv1d(channel, 64, 1)
-        self.conv2 = nn.Conv1d(64, 128, 1)
-        self.conv3 = nn.Conv1d(128, 1024, 1)
+        self.conv1b = nn.Conv1d(64, 128, 1)  # Nova camada
+        self.conv2 = nn.Conv1d(128, 256, 1)  # Dobrado: 64->128, 128->256
+        self.conv2b = nn.Conv1d(256, 512, 1)  # Nova camada
+        self.conv3 = nn.Conv1d(512, 1024, 1)  # Dobrado: 128->256, 256->512
+        self.conv3b = nn.Conv1d(1024, 2048, 1)  # Nova camada + dobrado: 1024->2048
+
         self.bn1 = nn.InstanceNorm1d(64)
-        self.bn2 = nn.InstanceNorm1d(128)
-        self.bn3 = nn.InstanceNorm1d(1024)
+        self.bn1b = nn.InstanceNorm1d(128)  # Para nova camada
+        self.bn2 = nn.InstanceNorm1d(256)  # Dobrado
+        self.bn2b = nn.InstanceNorm1d(512)  # Para nova camada
+        self.bn3 = nn.InstanceNorm1d(1024)  # Original
+        self.bn3b = nn.InstanceNorm1d(2048)  # Para nova camada
+
         self.global_feat = global_feat
         self.feature_transform = feature_transform
         if self.feature_transform:
-            self.fstn = TNet(k=64)
+            # self.fstn = TNet(k=64)
+            self.fstn = TNet(k=128)
 
     def forward(self, x):
         B, C, N = x.size()
@@ -74,6 +121,7 @@ class PointNetEncoder(nn.Module):
         else:
             x = x_xyz
         x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn1b(self.conv1b(x)))    # Nova camada
 
         if self.feature_transform:
             trans_feat = self.fstn(x)
@@ -81,18 +129,22 @@ class PointNetEncoder(nn.Module):
         else:
             trans_feat = None
 
-        pointfeat = x
+        pointfeat = x  # pointfeat agora tem 128 canais
         x = F.relu(self.bn2(self.conv2(x)))
-        x = self.bn3(self.conv3(x))
+        x = F.relu(self.bn2b(self.conv2b(x)))  # Nova camada
+        x = F.relu(self.bn3(self.conv3(x)))
+        x = self.bn3b(self.conv3b(x))  # Nova camada
         x = torch.max(x, 2, keepdim=True)[0]
-        x = x.view(-1, 1024)
+        # x = x.view(-1, 1024)
+        x = x.view(-1, 2048)                    # Dobrado: 1024->2048
         if self.global_feat:
             return x, trans, trans_feat
         else:
-            x = x.view(-1, 1024, 1).repeat(1, 1, N)
+            # x = x.view(-1, 1024, 1).repeat(1, 1, N)
+            x = x.view(-1, 2048, 1).repeat(1, 1, N)  # Dobrado: 1024->2048
             return torch.cat([x, pointfeat], 1), trans, trans_feat
 
-# %% ../nbs/02_pointNet.ipynb 8
+# %% ../nbs/02_pointNet.ipynb 6
 class PointNetSeg(nn.Module):
     def __init__(self, num_classes, input_channels=9, feature_transform=True):
         super(PointNetSeg, self).__init__()
@@ -102,13 +154,28 @@ class PointNetSeg(nn.Module):
             feature_transform=feature_transform,
             channel=input_channels,
         )
-        self.conv1 = nn.Conv1d(1088, 512, 1)
-        self.conv2 = nn.Conv1d(512, 256, 1)
-        self.conv3 = nn.Conv1d(256, 128, 1)
-        self.conv4 = nn.Conv1d(128, self.num_classes, 1)
-        self.bn1 = nn.InstanceNorm1d(512)
-        self.bn2 = nn.InstanceNorm1d(256)
-        self.bn3 = nn.InstanceNorm1d(128)
+        # self.conv1 = nn.Conv1d(1088, 512, 1)
+        # self.conv2 = nn.Conv1d(512, 256, 1)
+        # self.conv3 = nn.Conv1d(256, 128, 1)
+        # self.conv4 = nn.Conv1d(128, self.num_classes, 1)
+        # self.bn1 = nn.InstanceNorm1d(512)
+        # self.bn2 = nn.InstanceNorm1d(256)
+        # self.bn3 = nn.InstanceNorm1d(128)
+        # A dimensão de entrada agora é 2048 (global) + 128 (pointfeat) = 2176
+        self.conv1 = nn.Conv1d(2176, 1024, 1) # Adaptado para nova dimensão: 1088->2176, 512->1024
+        self.conv1b = nn.Conv1d(1024, 768, 1) # Nova camada
+        self.conv2 = nn.Conv1d(768, 512, 1)  # Dobrado: 256->512
+        self.conv2b = nn.Conv1d(512, 384, 1)  # Nova camada
+        self.conv3 = nn.Conv1d(384, 256, 1)  # Dobrado: 128->256
+        self.conv3b = nn.Conv1d(256, 192, 1)  # Nova camada
+        self.conv4 = nn.Conv1d(192, self.num_classes, 1)  # Última camada
+
+        self.bn1 = nn.InstanceNorm1d(1024)
+        self.bn1b = nn.InstanceNorm1d(768)  # Para nova camada
+        self.bn2 = nn.InstanceNorm1d(512)
+        self.bn2b = nn.InstanceNorm1d(384)  # Para nova camada
+        self.bn3 = nn.InstanceNorm1d(256)
+        self.bn3b = nn.InstanceNorm1d(192)  # Para nova camada
 
     def forward(self, x):
         # Espera entrada: (B, N, C) -> (B, C, N)
@@ -120,14 +187,17 @@ class PointNetSeg(nn.Module):
         n_pts = x.size()[2]
         x, trans, trans_feat = self.feat(x)
         x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn1b(self.conv1b(x)))  # Nova camada
         x = F.relu(self.bn2(self.conv2(x)))
+        x = F.relu(self.bn2b(self.conv2b(x)))  # Nova camada
         x = F.relu(self.bn3(self.conv3(x)))
+        x = F.relu(self.bn3b(self.conv3b(x)))  # Nova camada
         x = self.conv4(x)
         x = x.transpose(2, 1).contiguous()  # (B, N, num_classes)
         # falta aplicar softmax e view do codigo copiado
         return x, trans_feat
 
-# %% ../nbs/02_pointNet.ipynb 9
+# %% ../nbs/02_pointNet.ipynb 7
 def feature_transform_regulaizer(trans):
     d = trans.size()[1]
     I = torch.eye(d, device=trans.device)[None, :, :]

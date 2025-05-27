@@ -382,7 +382,7 @@ class PointCloudVisualizer:
         grid.colors = o3d.utility.Vector3dVector(colors)
         return grid
 
-    def _create_plane(self, normal_d_tuple, size=100.0):
+    def _create_plane(self, normal_d_tuple, size=50.0):
         """
         Cria um plano baseado no vetor normal e no valor d.
 
@@ -481,7 +481,7 @@ class PointCloudVisualizer:
 
         opt = vis.get_render_option()
         opt.point_size = self.point_size
-        opt.background_color = np.asarray([0.1, 0.1, 0.1])
+        opt.background_color = np.asarray([0.15, 0.15, 0.15])
         opt.show_coordinate_frame = True
         opt.mesh_show_back_face = True
 
@@ -568,7 +568,7 @@ class PointCloudVisualizer:
 
         opt = vis.get_render_option()
         opt.point_size = self.point_size
-        opt.background_color = np.asarray([0.1, 0.1, 0.1])  # estilo AutoCAD / pptk
+        opt.background_color = np.asarray([0.15, 0.15, 0.15])  # estilo AutoCAD / pptk
         opt.show_coordinate_frame = True
         opt.mesh_show_back_face = True  # Exibir o lado de trás do plano
 
@@ -1042,6 +1042,8 @@ def extract_features_from_clusters(
             unique_true_labels = np.unique(cluster_true_labels)
             if drop_incosistentes and len(unique_true_labels) > 1:
                 continue
+            # if len(unique_true_labels) > 1:
+            #     continue
 
             # Ignora clusters onde todos os true_labels são 0 (exceto cluster 9)
             if unique_true_labels[0] == 0:

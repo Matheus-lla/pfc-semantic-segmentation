@@ -18,6 +18,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import torch
 from matplotlib import cm
+from scipy.signal import savgol_filter
 from sklearn.decomposition import PCA
 from torch.utils.data import Dataset
 
@@ -34,10 +35,11 @@ plt.rcParams.update(
         "font.family": "serif",  # ou "Times New Roman"
     }
 )
+import random
+
 import numpy as np
 import open3d as o3d
 import yaml
-import random
 
 # %% ../nbs/00_utils.ipynb 4
 class SemanticKittiDataset(Dataset):
@@ -79,7 +81,9 @@ class SemanticKittiDataset(Dataset):
         with open(self.yaml_path, "r") as file:
             metadata: dict = yaml.safe_load(file)
 
-        self.sequences: list[int] = sequence_list if sequence_list is not None else metadata["split"][split]
+        self.sequences: list[int] = (
+            sequence_list if sequence_list is not None else metadata["split"][split]
+        )
         self.learning_map: dict[int, int] = metadata["learning_map"]
 
         # Convert label map to numpy for fast lookup
@@ -477,7 +481,9 @@ class PointCloudVisualizer:
         colors_max = self._get_color_map_clusters(len(max_points), "max")
 
         vis = o3d.visualization.Visualizer()  # type: ignore
-        vis.create_window(window_name=f"Cluster Visualization {name}", width=800, height=600)
+        vis.create_window(
+            window_name=f"Cluster Visualization {name}", width=800, height=600
+        )
 
         opt = vis.get_render_option()
         opt.point_size = self.point_size
@@ -564,7 +570,9 @@ class PointCloudVisualizer:
 
         # Visualize with point size
         vis = o3d.visualization.Visualizer()  # type: ignore
-        vis.create_window(window_name=f"Point cloud Visualization {name}", width=800, height=600)
+        vis.create_window(
+            window_name=f"Point cloud Visualization {name}", width=800, height=600
+        )
 
         opt = vis.get_render_option()
         opt.point_size = self.point_size
@@ -672,6 +680,7 @@ def main_viz(temp_dir):
         # Limpar diretório temporário
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
@@ -935,7 +944,7 @@ def get_statistics(idx, point_cloud):
     return estatisticas_do_frame
 
 # %% ../nbs/00_utils.ipynb 15
-def compute_cluster_features(cluster_points, true_label):
+def compute_cluster_features(cluster_points, true_label, num_bins=5):
     # Calcular centroide (3 primeiras posições)
     centroid = np.mean(cluster_points[:, :3], axis=0)  # Somente as colunas x, y, z
 
@@ -943,47 +952,31 @@ def compute_cluster_features(cluster_points, true_label):
     max_point = np.max(cluster_points[:, :3], axis=0)
     min_point = np.min(cluster_points[:, :3], axis=0)
 
+    # --- Histogramas para cada eixo ---
+    # Extrair coordenadas x, y, z
+    x_coords = cluster_points[:, 0]
+    y_coords = cluster_points[:, 1]
+    z_coords = cluster_points[:, 2]
+
+    # Calcular histogramas para cada eixo
+    # Para cada eixo, o range é do mínimo ao máximo desse eixo
+    hist_x, _ = np.histogram(
+        x_coords, bins=num_bins, range=(min_point[0], max_point[0]), density=True
+    )
+    hist_y, _ = np.histogram(
+        y_coords, bins=num_bins, range=(min_point[1], max_point[1]), density=True
+    )
+    hist_z, _ = np.histogram(
+        z_coords, bins=num_bins, range=(min_point[2], max_point[2]), density=True
+    )
+
+    # Se range for zero em algum eixo, o histograma terá valores NaN, substituir por zeros
+    hist_x = np.nan_to_num(hist_x)
+    hist_y = np.nan_to_num(hist_y)
+    hist_z = np.nan_to_num(hist_z)
+
     # # Calcular desvio padrão em relação ao centroide (3 posições)
     # deviation = np.std(cluster_points[:, :3] - centroid, axis=0)
-
-    # # Calcular a densidade (1 posição)
-    # # Verificar se o volume é zero para evitar a divisão por zero
-    # volume = np.prod(max_point - min_point)  # Volume da caixa delimitadora
-    # if volume == 0:
-    #     density = 0  # Ajusta densidade para 0 se volume for zero
-    # else:
-    #     density = len(cluster_points) / volume
-
-    # # PCA para análise de planicidade, esfericidade, e elongação (3 posições)
-    # # Apenas aplica PCA se houver 3 ou mais pontos
-    # if len(cluster_points) >= 3:
-    #     pca = PCA(n_components=3)  # Usando 3 componentes (se possível)
-    #     pca.fit(
-    #         cluster_points[:, :3] - centroid
-    #     )  # Subtrair o centroide para centralizar os dados
-    #     eigenvalues = pca.explained_variance_
-
-    #     planarity = (
-    #         eigenvalues[1] / eigenvalues[0]
-    #         if len(eigenvalues) > 1 and eigenvalues[0] != 0
-    #         else 0
-    #     )
-    #     sphericity = (
-    #         eigenvalues[0] / np.sum(eigenvalues)
-    #         if len(eigenvalues) > 0 and np.sum(eigenvalues) != 0
-    #         else 0
-    #     )
-    #     elongation = (
-    #         eigenvalues[0] / eigenvalues[2]
-    #         if len(eigenvalues) > 2 and eigenvalues[2] != 0
-    #         else 0
-    #     )
-    # else:
-    #     # Para clusters com menos de 3 pontos, podemos definir planicidade, esfericidade e elongação como 0
-    #     planarity = sphericity = elongation = 0
-
-    # # Compactação (1 posição)
-    # compactness = np.mean(np.linalg.norm(cluster_points[:, :3] - centroid, axis=1))
 
     # Criando o vetor de características (concatenando todas as features)
     feature_vector = np.concatenate(
@@ -991,23 +984,19 @@ def compute_cluster_features(cluster_points, true_label):
             centroid,  # 3 posições: [centroid_x, centroid_y, centroid_z]
             max_point,  # 3 posições: [max_x, max_y, max_z]
             min_point,  # 3 posições: [min_x, min_y, min_z]
+            hist_x,  # num_bins posições: [hist_x_0, hist_x_1, ..., hist_x_(num_bins-1)]
+            hist_y,  # num_bins posições: [hist_y_0, hist_y_1, ..., hist_y_(num_bins-1)]
+            hist_z,  # num_bins posições: [hist_z_0, hist_z_1, ..., hist_z_(num_bins-1)]
             # deviation,  # 3 posições: [dev_x, dev_y, dev_z]
-            # [density],  # 1 posição: [density]
-            # [planarity],  # 1 posição: [planarity]
-            # [sphericity],  # 1 posição: [sphericity]
-            # [elongation],  # 1 posição: [elongation]
-            # [compactness],  # 1 posição: [compactness]
-            np.full_like(centroid.shape, true_label),
-            np.zeros_like(centroid.shape),
+            [true_label],
+            [0],
         ]
     )
 
     return feature_vector
 
 # %% ../nbs/00_utils.ipynb 16
-def extract_features_from_clusters(
-    point_cloud, drop_incosistentes=True, min_cluster_size=1
-):
+def extract_features_from_clusters(point_cloud, min_cluster_size=3, num_bins=5):
     """
     Extrai features dos clusters do point_cloud.
     - Ignora clusters inconsistentes (exceto cluster 9, se drop_incosistentes=True)
@@ -1022,38 +1011,39 @@ def extract_features_from_clusters(
     Returns:
         np.ndarray: Array de features dos clusters
     """
-    clusters = np.unique(point_cloud[:, 4])
+    mask_true_label_not_zero = point_cloud[:, 3] != 0
+    point_cloud_filtered = point_cloud[mask_true_label_not_zero]
+
+    clusters = np.unique(point_cloud_filtered[:, 4])
     features = []
 
     # Pré-cálculo para acelerar filtragem por cluster
-    pred_labels = point_cloud[:, 4]
-    true_labels = point_cloud[:, 3]
+    pred_labels = point_cloud_filtered[:, 4]
+    true_labels = point_cloud_filtered[:, 3]
 
     for cluster_label in clusters:
-        # Ignora clusters inconsistentes (exceto cluster 9)
+        mask = pred_labels == cluster_label
+        cluster_points = point_cloud_filtered[mask]
         if cluster_label != 9:
-            mask = pred_labels == cluster_label
-            cluster_points = point_cloud[mask]
             # Só calcula features para clusters com tamanho suficiente
             if cluster_points.shape[0] < min_cluster_size:
                 continue
 
             cluster_true_labels = true_labels[mask]
             unique_true_labels = np.unique(cluster_true_labels)
-            if drop_incosistentes and len(unique_true_labels) > 1:
-                continue
-            # if len(unique_true_labels) > 1:
-            #     continue
-
-            # Ignora clusters onde todos os true_labels são 0 (exceto cluster 9)
-            if unique_true_labels[0] == 0:
-                continue
+            if len(unique_true_labels) == 1:
+                cluster_true_label = unique_true_labels[0]
+            else:  # Ensure there are labels to count
+                counts = Counter(cluster_true_labels)
+                cluster_true_label = counts.most_common(1)[0][0]
 
         # Para cluster 9, sempre define true_label como 9
-        cluster_true_label = 9 if cluster_label == 9 else unique_true_labels[0]
+        cluster_true_label = 9 if cluster_label == 9 else cluster_true_label
 
         features.append(
-            compute_cluster_features(cluster_points[:, :3], cluster_true_label)
+            compute_cluster_features(
+                cluster_points[:, :3], cluster_true_label, num_bins=num_bins
+            )
         )
 
     return np.array(features)
@@ -1093,64 +1083,117 @@ def _plot_with_stats(
     ax.grid(axis="y", color="gray", linestyle="--", linewidth=0.7, alpha=0.4)
 
 # %% ../nbs/00_utils.ipynb 19
-def plot_1(resumo_por_frame, seq_value=None):
+def plot_1(resumo_por_frame, seq_value=None, smoothing_window=51):
     """
-    Plota em 4 subplots verticais:
+    Plota em 4 subplots verticais com dados suavizados:
     1. Número total de pontos
     2. Número total de clusters
     3. Pontos por cluster médio
     4. Porcentagem de redução da dimensionalidade
     """
+    # Extrair dados originais
     num_clusters = np.array([frame["num_clusters"] for frame in resumo_por_frame])
     num_pontos = np.array([frame["num_pontos"] for frame in resumo_por_frame])
-    pontos_por_cluster_medio = np.array(
-        [frame["pontos_por_cluster_medio"] for frame in resumo_por_frame]
-    )
     frames = np.arange(len(resumo_por_frame))
-    reducao_dimensionalidade = 1 - (num_clusters / num_pontos)
 
-    fig, axs = plt.subplots(4, 1, figsize=(12, 18))
-    fig.tight_layout(pad=5.0)
+    # Evitar divisão por zero
+    reducao_dimensionalidade = np.zeros_like(num_clusters, dtype=float)
+    non_zero_mask = num_pontos != 0
+    reducao_dimensionalidade[non_zero_mask] = 1 - (
+        num_clusters[non_zero_mask] / num_pontos[non_zero_mask]
+    )
+    reducao_dimensionalidade *= 100  # Em porcentagem
 
-    _plot_with_stats(
-        axs[0],
-        frames,
-        num_pontos,
-        "green",
-        "Número de Pontos",
-        "Número de Pontos por Frame",
-        "Número de Pontos",
-    )
-    _plot_with_stats(
-        axs[1],
-        frames,
-        num_clusters,
-        "blue",
-        "Número de Clusters",
-        "Número de Clusters por Frame",
-        "Número de Clusters",
-    )
-    _plot_with_stats(
-        axs[2],
-        frames,
-        pontos_por_cluster_medio,
-        "orange",
-        "Pontos por Cluster Médio",
-        "Média de Pontos por Cluster por Frame",
-        "Pontos por Cluster",
-    )
-    _plot_with_stats(
-        axs[3],
-        frames,
-        reducao_dimensionalidade * 100,
-        "purple",
-        "Redução Dimensionalidade (%)",
-        "Porcentagem de Redução da Dimensionalidade por Frame",
-        "Redução (%)",
-        mean_fmt="{:.2f}",
-        std_fmt="{:.2f}",
-    )
+    # --- Suavização ---
+    # Só aplica o filtro se a janela for menor que o número de pontos
+    if smoothing_window is not None and len(frames) > smoothing_window:
+        # Garante que a janela seja ímpar para o filtro
+        if smoothing_window % 2 == 0:
+            smoothing_window += 1
 
+        # Aplica o filtro Savitzky-Golay com polyorder=2 para uma curva mais suave
+        poly_order = 2
+        num_pontos_suavizado = savgol_filter(num_pontos, smoothing_window, poly_order)
+        num_clusters_suavizado = savgol_filter(num_clusters, smoothing_window, poly_order)
+        reducao_suavizado = savgol_filter(reducao_dimensionalidade, smoothing_window, poly_order)
+    else:
+        # Se não for possível suavizar, usa os dados originais
+        num_pontos_suavizado = num_pontos
+        num_clusters_suavizado = num_clusters
+        reducao_suavizado = reducao_dimensionalidade
+
+    # --- Plotagem ---
+    fig, axs = plt.subplots(3, 1, figsize=(12, 20), sharex=True)
+
+    # Configurações para cada subplot
+    plot_configs = [
+        {
+            "data_orig": num_pontos,
+            "data_suave": num_pontos_suavizado,
+            "title": "Número de Pontos por Frame",
+            "ylabel": "Número de Pontos",
+            "color": "green",
+            "mean_fmt": "{:.0f}",
+            "std_fmt": "{:.0f}",
+        },
+        {
+            "data_orig": num_clusters,
+            "data_suave": num_clusters_suavizado,
+            "title": "Número de Clusters por Frame",
+            "ylabel": "Número de Clusters",
+            "color": "blue",
+            "mean_fmt": "{:.1f}",
+            "std_fmt": "{:.1f}",
+        },
+        {
+            "data_orig": reducao_dimensionalidade,
+            "data_suave": reducao_suavizado,
+            "title": "Porcentagem de Redução da Dimensionalidade",
+            "ylabel": "Redução (%)",
+            "color": "red",
+            "mean_fmt": "{:.2f}",
+            "std_fmt": "{:.2f}",
+        },
+    ]
+
+    for i, config in enumerate(plot_configs):
+        ax = axs[i]
+        media = np.mean(config["data_orig"])
+        desvio = np.std(config["data_orig"])
+
+        ax.scatter(
+            frames,
+            config["data_orig"],
+            alpha=0.2,
+            color=config["color"],
+            label="Dados por Frame",
+            s=10,
+        )
+
+        # Alterado para label estático "Tendência" para consistência
+        ax.plot(frames, config["data_suave"], color=config["color"], label="Tendência")
+
+        ax.axhline(
+            media,
+            color=f"dark{config['color']}",
+            linestyle="--",
+            label=f"Média = {config['mean_fmt'].format(media)}",
+        )
+        ax.fill_between(
+            frames,
+            media - desvio,
+            media + desvio,
+            color=config["color"],
+            alpha=0.1,
+            label=f"Desvio Padrão = {config['std_fmt'].format(desvio)}",
+        )
+
+        ax.set_title(config["title"])
+        ax.set_ylabel(config["ylabel"])
+        ax.legend()
+        ax.grid(axis="y", color="gray", linestyle="--", linewidth=0.7, alpha=0.4)
+
+    axs[-1].set_xlabel("Frame")
     plt.tight_layout()
     plt.show()
 
@@ -1195,7 +1238,7 @@ def plot_2(resumo_por_frame, seq_value=None):
         fig.savefig(plot_dir / "plot-2.png", dpi=300, bbox_inches="tight")
 
 # %% ../nbs/00_utils.ipynb 21
-def plot_3(resumo_por_frame, seq_value=None):
+def plot_3(resumo_por_frame, seq_value=None, smoothing_window=51):
     inconsistentes_por_frame = np.array(
         [frame["num_clusters_inconsistentes"] for frame in resumo_por_frame]
     )
@@ -1204,32 +1247,95 @@ def plot_3(resumo_por_frame, seq_value=None):
     )
     frames = np.arange(len(resumo_por_frame))
 
-    porcentagem_erro = 1 - (inconsistentes_por_frame / num_clusters_por_frame)
-    porcentagem_erro = np.clip(porcentagem_erro, 0, 1)
+    # Renomeado para clareza, pois representa a taxa de acerto.
+    porcentagem_acerto = 1 - (inconsistentes_por_frame / num_clusters_por_frame)
+    porcentagem_acerto = np.clip(porcentagem_acerto, 0, 1) * 100  # Em porcentagem
 
-    fig, axs = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
-    _plot_with_stats(
-        axs[0],
+    fig, axs = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
+
+    # --- Suavização ---
+    # Só aplica o filtro se a janela for menor que o número de pontos
+    if smoothing_window is not None and len(frames) > smoothing_window:
+        # Garante que a janela seja ímpar para o filtro
+        if smoothing_window % 2 == 0:
+            smoothing_window += 1
+
+        # Aplica o filtro Savitzky-Golay
+        inconsistentes_suavizado = savgol_filter(
+            inconsistentes_por_frame, smoothing_window, 3
+        )  # polyorder=3
+        acerto_suavizado = savgol_filter(porcentagem_acerto, smoothing_window, 3)
+    else:
+        # Se não for possível suavizar, usa os dados originais
+        inconsistentes_suavizado = inconsistentes_por_frame
+        acerto_suavizado = porcentagem_acerto
+
+    # --- Plot 1: Clusters Inconsistentes ---
+    media_inconsistentes = np.mean(inconsistentes_por_frame)
+    desvio_inconsistentes = np.std(inconsistentes_por_frame)
+
+    axs[0].scatter(
         frames,
         inconsistentes_por_frame,
-        "red",
-        "Inconsistências por frame",
-        "Clusters Inconsistentes por Frame",
-        "Nº de Clusters Inconsistentes",
-        mean_fmt="{:.2f}",
-        std_fmt="{:.2f}",
+        alpha=0.2,
+        color="red",
+        label="Dados por Frame",
+        s=10,
     )
-    _plot_with_stats(
-        axs[1],
+    axs[0].plot(frames, inconsistentes_suavizado, color="red", label="Tendência")
+    axs[0].axhline(
+        media_inconsistentes,
+        color="darkred",
+        linestyle="--",
+        label=f"Média = {media_inconsistentes:.2f}",
+    )
+    axs[0].fill_between(
         frames,
-        porcentagem_erro,
-        "green",
-        "Porcentagem de acerto",
-        "Porcentagem de Erro por Frame",
-        "Porcentagem de Erro",
-        mean_fmt="{:.2f}",
-        std_fmt="{:.2f}",
+        media_inconsistentes - desvio_inconsistentes,
+        media_inconsistentes + desvio_inconsistentes,
+        color="red",
+        alpha=0.1,
+        label=f"Desvio Padrão = {desvio_inconsistentes:.2f}",
     )
+
+    axs[0].set_title("Clusters Inconsistentes por Frame")
+    axs[0].set_ylabel("Nº de Clusters Inconsistentes")
+    axs[0].legend()
+    axs[0].grid(axis="y", color="gray", linestyle="--", linewidth=0.7, alpha=0.4)
+
+    # --- Plot 2: Porcentagem de Acerto ---
+    media_acerto = np.mean(porcentagem_acerto)
+    desvio_acerto = np.std(porcentagem_acerto)
+
+    axs[1].scatter(
+        frames,
+        porcentagem_acerto,
+        alpha=0.2,
+        color="green",
+        label="Dados por Frame",
+        s=10,
+    )
+    axs[1].plot(frames, acerto_suavizado, color="green", label="Tendência")
+    axs[1].axhline(
+        media_acerto,
+        color="darkgreen",
+        linestyle="--",
+        label=f"Média = {media_acerto:.2f}%",
+    )
+    axs[1].fill_between(
+        frames,
+        media_acerto - desvio_acerto,
+        media_acerto + desvio_acerto,
+        color="green",
+        alpha=0.1,
+        label=f"Desvio Padrão = {desvio_acerto:.2f}%",
+    )
+
+    axs[1].set_title("Porcentagem de Acerto dos Clusters por Frame")
+    axs[1].set_xlabel("Frame")
+    axs[1].set_ylabel("Porcentagem de Acerto (%)")
+    axs[1].legend()
+    axs[1].grid(axis="y", color="gray", linestyle="--", linewidth=0.7, alpha=0.4)
 
     plt.tight_layout()
     plt.show()
@@ -1322,7 +1428,7 @@ def plot_4(resumo_por_frame, seq_value=None):
         fig.savefig(plot_dir / "plot-4.png", dpi=300, bbox_inches="tight")
 
 # %% ../nbs/00_utils.ipynb 23
-def plot_5(combinacoes_geral, seq_value=None, top_n=15):
+def plot_5(combinacoes_geral, seq_value=None, top_n=10):
     label_id_to_name = {
         -1: "plane",
         0: "unlabeled",
@@ -1377,7 +1483,7 @@ def plot_5(combinacoes_geral, seq_value=None, top_n=15):
 
     # Função para mostrar porcentagem só se o slice for maior que 3%
     def autopct_format(pct):
-        return ("%1.1f%%" % pct) if pct > 3 else ""
+        return ("%1.1f%%" % pct) if pct > 2 else ""
 
     wedges, texts, autotexts = ax.pie(  # type: ignore
         valores_pizza,
@@ -1399,9 +1505,9 @@ def plot_5(combinacoes_geral, seq_value=None, top_n=15):
     n_labels = len(legend_labels)
     ncol = min(3, max(1, (n_labels + 4) // 5))  # até 5 linhas por coluna
 
-    ax.set_title(
-        f"Top {top_n} combinações inconsistentes + Outros", fontsize=20, pad=20
-    )
+    # ax.set_title(
+    #     "Combinações inconsistentes mais recorrentes"
+    # )
     ax.axis("equal")
 
     # Legenda embaixo, em colunas, centralizada
